@@ -1,3 +1,4 @@
+
 name: JSON to M3U Converter
 
 on:
@@ -13,55 +14,68 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Download JSON
         run: |
-          curl -L --fail \
-            "https://lemajekaat.streamxlive.workers.dev/" \
-            -o source.json
+          curl -L --fail --silent --show-error \
+          "https://lemajekaat.streamxlive.workers.dev/" \
+          -o source.json
 
       - name: Convert JSON to M3U
         run: |
           python3 - <<'PY'
           import json
 
-          with open("source.json", "r", encoding="utf-8") as f:
+          with open("source.json", encoding="utf-8") as f:
               data = json.load(f)
 
           if isinstance(data, dict):
               data = data.get("channels", data.get("data", []))
 
-          lines = ["#EXTM3U"]
+          output = ["#EXTM3U"]
 
           for ch in data:
-              name = ch.get("name", ch.get("title", "Unknown"))
-              url = ch.get("url", ch.get("stream_url", ch.get("link", "")))
-              logo = ch.get("logo", ch.get("tvg-logo", ""))
-              category = ch.get("category", ch.get("group", "Other"))
-              channel_id = ch.get("id", "")
+              name = str(ch.get("name", "Unknown"))
+              channel_id = str(ch.get("id", ""))
+              logo = str(ch.get("logo", ""))
+              category = str(ch.get("category", "Other"))
+              url = str(ch.get("url", ""))
 
               if not url:
                   continue
 
-              lines.append(
+              # Prevent malformed M3U attributes
+              name = name.replace('"', "'")
+              logo = logo.replace('"', "'")
+              category = category.replace('"', "'")
+
+              output.append(
                   f'#EXTINF:-1 tvg-id="{channel_id}" '
                   f'tvg-name="{name}" tvg-logo="{logo}" '
                   f'group-title="{category}",{name}'
               )
-              lines.append(url)
+
+              output.append(url)
 
           with open("playlist.m3u", "w", encoding="utf-8") as f:
-              f.write("\n".join(lines) + "\n")
+              f.write("\n".join(output) + "\n")
 
-          print(f"Converted {len(lines)//2} entries")
+          print("M3U generated successfully")
+          print("Channels:", len(output) // 2)
           PY
 
-      - name: Commit updated playlist
+      - name: Commit changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
           git add playlist.m3u
-          git diff --cached --quiet || git commit -m "Update M3U playlist"
-          git push
+
+          if git diff --cached --quiet; then
+            echo "No changes"
+          else
+            git commit -m "Update playlist"
+            git push
+          fi
